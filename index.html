@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>元素プロパティ レーダーチャート</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center p-4">
+<h1 class="text-xl font-bold mb-1 text-center">⚛️ 元素プロパティ比較レーダー</h1>
+<p class="text-gray-400 text-sm mb-4 text-center">最大3元素を選択して物性を比較</p>
+
+<div class="w-full max-w-3xl">
+  <div class="bg-gray-800 rounded-xl p-4 mb-4">
+    <div class="flex gap-3 flex-wrap">
+      <div class="flex-1 min-w-36">
+        <label class="text-xs text-gray-400 block mb-1">元素1</label>
+        <select id="el1" class="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm"></select>
+      </div>
+      <div class="flex-1 min-w-36">
+        <label class="text-xs text-gray-400 block mb-1">元素2</label>
+        <select id="el2" class="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm"><option value="">（なし）</option></select>
+      </div>
+      <div class="flex-1 min-w-36">
+        <label class="text-xs text-gray-400 block mb-1">元素3</label>
+        <select id="el3" class="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm"><option value="">（なし）</option></select>
+      </div>
+    </div>
+  </div>
+  <div class="flex gap-4 flex-wrap">
+    <div class="bg-gray-800 rounded-xl p-4 flex-1 flex justify-center items-center min-h-72">
+      <canvas id="radar" width="320" height="320"></canvas>
+    </div>
+    <div class="bg-gray-800 rounded-xl p-4 flex-1 min-w-56">
+      <div class="text-xs font-bold text-gray-300 mb-3">元素データ</div>
+      <div id="dataTable" class="text-xs space-y-2"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const ELEMENTS=[
+  {sym:'H', name:'水素', Z:1, mass:1.008, en:2.20, mp:-259, bp:-253, density:0.09, ionE:1312},
+  {sym:'Li', name:'リチウム', Z:3, mass:6.94, en:0.98, mp:181, bp:1342, density:534, ionE:520},
+  {sym:'C', name:'炭素', Z:6, mass:12.01, en:2.55, mp:3550, bp:4027, density:2267, ionE:1086},
+  {sym:'N', name:'窒素', Z:7, mass:14.01, en:3.04, mp:-210, bp:-196, density:1.25, ionE:1402},
+  {sym:'O', name:'酸素', Z:8, mass:16.00, en:3.44, mp:-219, bp:-183, density:1.43, ionE:1314},
+  {sym:'Na', name:'ナトリウム', Z:11, mass:22.99, en:0.93, mp:98, bp:883, density:971, ionE:496},
+  {sym:'Mg', name:'マグネシウム', Z:12, mass:24.31, en:1.31, mp:650, bp:1091, density:1738, ionE:738},
+  {sym:'Al', name:'アルミニウム', Z:13, mass:26.98, en:1.61, mp:660, bp:2470, density:2700, ionE:577},
+  {sym:'Si', name:'シリコン', Z:14, mass:28.09, en:1.90, mp:1414, bp:3265, density:2330, ionE:786},
+  {sym:'P', name:'リン', Z:15, mass:30.97, en:2.19, mp:44, bp:280, density:1823, ionE:1012},
+  {sym:'S', name:'硫黄', Z:16, mass:32.06, en:2.58, mp:113, bp:445, density:2070, ionE:1000},
+  {sym:'Cl', name:'塩素', Z:17, mass:35.45, en:3.16, mp:-101, bp:-34, density:3.21, ionE:1251},
+  {sym:'K', name:'カリウム', Z:19, mass:39.10, en:0.82, mp:64, bp:759, density:862, ionE:419},
+  {sym:'Ca', name:'カルシウム', Z:20, mass:40.08, en:1.00, mp:842, bp:1484, density:1550, ionE:590},
+  {sym:'Fe', name:'鉄', Z:26, mass:55.85, en:1.83, mp:1538, bp:2862, density:7874, ionE:762},
+  {sym:'Cu', name:'銅', Z:29, mass:63.55, en:1.90, mp:1085, bp:2562, density:8960, ionE:745},
+  {sym:'Zn', name:'亜鉛', Z:30, mass:65.38, en:1.65, mp:420, bp:907, density:7133, ionE:906},
+  {sym:'Ag', name:'銀', Z:47, mass:107.87, en:1.93, mp:962, bp:2162, density:10490, ionE:731},
+  {sym:'Au', name:'金', Z:79, mass:196.97, en:2.54, mp:1064, bp:2807, density:19300, ionE:890},
+  {sym:'Pb', name:'鉛', Z:82, mass:207.2, en:2.33, mp:328, bp:1749, density:11340, ionE:716},
+];
+
+const AXES=['電気陰性度','融点','沸点','密度','第1イオン化E'];
+const MAX_VALS={en:4, mp:4000, bp:5000, density:20000, ionE:1500};
+const COLORS=['#60a5fa','#34d399','#f97316'];
+
+function normalize(el){
+  return [
+    el.en/MAX_VALS.en,
+    Math.max(0,(el.mp+300)/(MAX_VALS.mp+300)),
+    Math.max(0,(el.bp+300)/(MAX_VALS.bp+300)),
+    el.density/MAX_VALS.density,
+    el.ionE/MAX_VALS.ionE
+  ];
+}
+
+function populateSelects(){
+  const opts=ELEMENTS.map(e=>`<option value="${e.sym}">${e.sym} - ${e.name}</option>`).join('');
+  document.getElementById('el1').innerHTML=opts;
+  document.getElementById('el1').value='Fe';
+  document.getElementById('el2').innerHTML='<option value="">（なし）</option>'+opts;
+  document.getElementById('el2').value='Cu';
+  document.getElementById('el3').innerHTML='<option value="">（なし）</option>'+opts;
+  document.getElementById('el3').value='Au';
+}
+
+function getSelected(){
+  return ['el1','el2','el3'].map(id=>document.getElementById(id).value)
+    .filter(v=>v).map(sym=>ELEMENTS.find(e=>e.sym===sym));
+}
+
+function drawRadar(els){
+  const cv=document.getElementById('radar');
+  const ctx=cv.getContext('2d');
+  const W=cv.width, H=cv.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#1f2937'; ctx.fillRect(0,0,W,H);
+  const cx=W/2, cy=H/2, R=120, n=5;
+
+  // Grid
+  for(let lev=1;lev<=5;lev++){
+    const r=R*lev/5;
+    ctx.beginPath();
+    for(let i=0;i<n;i++){
+      const a=Math.PI*2*i/n - Math.PI/2;
+      const x=cx+r*Math.cos(a), y=cy+r*Math.sin(a);
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.closePath(); ctx.strokeStyle='#374151'; ctx.lineWidth=1; ctx.stroke();
+  }
+
+  // Axes + labels
+  for(let i=0;i<n;i++){
+    const a=Math.PI*2*i/n - Math.PI/2;
+    const lx=cx+(R+22)*Math.cos(a), ly=cy+(R+22)*Math.sin(a);
+    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+R*Math.cos(a),cy+R*Math.sin(a));
+    ctx.strokeStyle='#4b5563'; ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle='#9ca3af'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(AXES[i],lx,ly+3);
+  }
+
+  // Data
+  els.forEach((el,ei)=>{
+    if(!el) return;
+    const vals=normalize(el);
+    ctx.beginPath();
+    vals.forEach((v,i)=>{
+      const a=Math.PI*2*i/n - Math.PI/2;
+      const x=cx+R*v*Math.cos(a), y=cy+R*v*Math.sin(a);
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    });
+    ctx.closePath();
+    ctx.fillStyle=COLORS[ei]+'33'; ctx.fill();
+    ctx.strokeStyle=COLORS[ei]; ctx.lineWidth=2; ctx.stroke();
+  });
+
+  // Legend
+  els.forEach((el,ei)=>{
+    if(!el) return;
+    ctx.fillStyle=COLORS[ei]; ctx.fillRect(10,10+ei*18,12,12);
+    ctx.fillStyle='#e5e7eb'; ctx.font='11px sans-serif'; ctx.textAlign='left';
+    ctx.fillText(`${el.sym} ${el.name}`,26,20+ei*18);
+  });
+}
+
+function renderTable(els){
+  const div=document.getElementById('dataTable');
+  const rows=[
+    ['原子番号', e=>e.Z],
+    ['原子量', e=>e.mass],
+    ['電気陰性度', e=>e.en],
+    ['融点 (°C)', e=>e.mp],
+    ['沸点 (°C)', e=>e.bp],
+    ['密度 (kg/m³)', e=>e.density],
+    ['第1イオン化エネルギー', e=>e.ionE+'kJ/mol'],
+  ];
+  div.innerHTML=rows.map(([label,fn])=>
+    `<div class="flex gap-2 items-center">
+      <span class="text-gray-500 w-32 shrink-0">${label}</span>
+      ${els.filter(Boolean).map((e,i)=>`<span style="color:${COLORS[i]}">${fn(e)}</span>`).join('')}
+    </div>`
+  ).join('');
+}
+
+function update(){
+  const els=getSelected();
+  drawRadar(els);
+  renderTable(els);
+}
+
+populateSelects();
+['el1','el2','el3'].forEach(id=>document.getElementById(id).addEventListener('change',update));
+update();
+</script>
+</body>
+</html>
